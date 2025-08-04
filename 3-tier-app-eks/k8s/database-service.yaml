@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-db
+  namespace: 3-tier-app-eks
+  labels:
+    service: database
+spec:
+  type: ExternalName
+  externalName: tawfiq-db.cto44ogqocij.eu-west-2.rds.amazonaws.com
+  ports:
+  - port: 5432 
