@@ -230,7 +230,7 @@ It may take a while but you will see it getting created
 
 You can clone this repository to get the code for the application:
 ```bash
-git clone https://github.com/three-tier-eks/three-tier-eks.git
+git clone https://github.com/wegoagain00/3-tier-eks.git
 cd three-tier-app-eks/k8s
 ```
 These are all the manifest files for the application. 
