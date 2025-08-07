@@ -23,7 +23,7 @@ We will keep it simple and use ***Managed Node Groups*** with eksctl for this pr
 
 
 ## 🏗 Architecture
-![arch](arch-kub.png)
+![arch](/images/three-tier-eks.jpeg)
 
 ## Prerequisites
 I'll assume you have basic knowledge of Docker, Kubernetes, and AWS services. you will need to install ***eksctl, aws cli, kubectl, helm and docker*** on your local machine.
