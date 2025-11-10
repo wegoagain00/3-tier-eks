@@ -21,52 +21,50 @@ spec:
         app: backend
     spec:
       nodeSelector:
-        kubernetes.io/arch: amd64 
-      initContainers:
-      - name: wait-for-db
-        image: busybox
-        command: ['sh', '-c', 'until nslookup postgres-db.3-tier-app-eks.svc.cluster.local; do echo waiting for database; sleep 2; done;']
+        kubernetes.io/arch: amd64
       containers:
-      - name: backend
-        image: livingdevopswithakhilesh/devopsdozo:backend-latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8000
-        env:
-        - name: ALLOWED_ORIGINS
-          value: "*"
-        - name: DATABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: db-secrets
-              key: DATABASE_URL
-        - name: SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: db-secrets
-              key: SECRET_KEY
-        - name: FLASK_DEBUG
-          valueFrom:
-            configMapKeyRef:
-              name: app-config
-              key: FLASK_DEBUG
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
+        - name: backend
+          image: 373317459404.dkr.ecr.eu-west-2.amazonaws.com/3-tier-eks-backend:e9f11a4c9ac99fe003972328a0794809074bc3d1 # NOTE: This tag may be incorrect
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: ALLOWED_ORIGINS
+              value: "*"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: DATABASE_URL
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: SECRET_KEY
+            - name: FLASK_DEBUG
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: FLASK_DEBUG
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: backend
   namespace: 3-tier-app-eks
+  annotations:
+    alb.ingress.kubernetes.io/healthcheck-path: /api
 spec:
   selector:
     app: backend
   ports:
-  - port: 8000
-    targetPort: 8000
+    - port: 8000
+      targetPort: 8000
   type: ClusterIP

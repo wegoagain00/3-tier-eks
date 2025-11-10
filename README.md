@@ -248,18 +248,30 @@ Use the following ci.yml file and replace the following with your own:
 `IAM_ROLE_ARN`: The full ARN of the IAM role you just created. It will look like
 arn:aws:iam::123456789012:role/YourRoleName.
 
+Now do a git commit and push your changes to the main branch and tests should run successfully and images should show on ECR.
 
+```
+git add .
+git commit -m "Added CI pipeline"
+git push origin main
+```
 
+---
+
+## Kubernetes deployment
+Everything we will be deploying is in the k8s folder in the repository. ( I recommend understanding the files and how they work)
 
 ### Namespace
-***The first thing we will be doing is creating the Kubernetes namespace, we need this to isolate group of resources. It gives you a virtual cluster for you to work within, usually needed when working in teams.***
+***The first thing we will be doing is creating the Kubernetes namespace, we need this to isolate group of resources within a cluster. It gives you a virtual cluster for you to work within, usually needed when working in teams helps avoid conflicts and manage resources more efficiently.***
 
 `kubectl apply -f namespace.yaml` will create the namespace named ***three-tier-app-eks*** for the application. if you do `kubectl get namespaces` you should see the namespace created, if you dont it'll be created in the default namespace.
+
+![](/images/img-14.png)
 
 ### RDS service
 ***Time to create a service for our RDS instance***
 
- Add your RDS endpoint in the `externalName` field. You can find your RDS endpoint in the AWS console under the RDS instance details. Then apply the service manifest: `kubectl apply -f database-service.yaml`
+ Add your RDS endpoint in the `externalName` field. You can find your RDS endpoint in the AWS console in the one we created under the RDS instance details. Then apply the service manifest: `kubectl apply -f database-service.yaml`
 
 
 ```yaml
@@ -272,20 +284,20 @@ metadata:
     service: database
 spec:
   type: ExternalName
-  externalName: tawfiq-db.cto44ogqocij.eu-west-2.rds.amazonaws.com
+  externalName: <your-rds-endpoint>
   ports:
   - port: 5432
 ```
 
-Now the DNS name for RDS using service discovery is set up, we can use it in our application pods to connect to the database. The format is `service-name.namespace.svc.cluster.local`, so in this case it would be `postgres-db.3-tier-app-eks.svc.cluster.local`. This service is needed to allow the application pods to connect to the RDS instance using a DNS name instead of the full RDS endpoint URL. This makes it easier to manage and change the database connection details without modifying the application code.
+This Kubernetes manifest tells any application running inside your Kubernetes cluster (specifically in the 3-tier-app-eks namespace) that if it wants to connect to a database named postgres-db on port 5432, it should actually connect to the external Amazon RDS instance located at <your-rds-endpoint>.
 
 To test we can run a temporary pod in the same namespace and try to connect to the RDS instance using the DNS name:
 
 ```bash
-kubectl run -i --tty pg-client --image=postgres --namespace=3-tier-app-eks -- bash
+kubectl run pg-connection-test --rm -it --image=postgres:14 --namespace=3-tier-app-eks -- bash
 # Inside the pod, try to connect to the RDS instance
-#the name wegoagain is the username we set when creating the RDS instance change it to your username
-psql -h postgres-db -p 5432 -U wegoagain -d postgres
+#the name postgresadmin is the username we set when creating the RDS instance change it to your username
+psql -h postgres-db -p 5432 -U postgresadmin -d postgres
 ```
 Itll ask for the password, enter the password you set when creating the RDS instance. If you see a prompt like `postgres=#`, then you have successfully connected to the RDS instance. Dont forget to exit the pod when done by typing `exit` and then `exit` again.
 
@@ -294,31 +306,15 @@ To delete the temporary pod, run:
 ```bash
 kubectl delete pod pg-client --namespace=3-tier-app-eks
 ```
+I had an issue where I couldn't connect to the RDS instance from the pod. I had to add the RDSsecurity group rule to allow PSQL traffic from anywhere. (This isnt best practice but it was to test out the connection)
 
-![](/images/img-7.png)
+![](/images/img-15.png)
+![](/images/img-16.png)
 
-### Why use AWS RDS vs Containerized PostgreSQL
-
-| Aspect                     | AWS RDS PostgreSQL                                                                                                   | Containerized PostgreSQL                                                                        |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| **High Availability**      | ✅ Multi-AZ automatic failover<br>✅ 99.95% uptime SLA<br>✅ Cross-region read replicas                                 | ❌ Single point of failure<br>❌ Manual HA setup required<br>❌ Complex multi-node configuration   |
-| **Backup & Recovery**      | ✅ Automated daily backups<br>✅ Point-in-time recovery (35 days)<br>✅ Cross-region backup replication                 | ❌ Manual backup processes<br>❌ Complex recovery procedures<br>❌ Additional storage overhead     |
-| **Operational Management** | ✅ Automatic security patching<br>✅ Managed minor version upgrades<br>✅ Built-in monitoring (CloudWatch)              | ❌ Manual patch management<br>❌ Self-managed updates<br>❌ Custom monitoring setup required       |
-| **Security**               | ✅ Encryption at rest (KMS)<br>✅ Encryption in transit (SSL/TLS)<br>✅ VPC isolation<br>✅ IAM database authentication  | ⚠️ Manual encryption setup<br>⚠️ Complex secret management<br>⚠️ Additional security configuration |
-| **Performance**            | ✅ Provisioned IOPS<br>✅ Optimized database instances<br>✅ RDS Proxy for connection pooling<br>✅ Performance Insights | ❌ Limited by node resources<br>❌ Manual performance tuning<br>❌ Complex connection pooling      |
-| **Scalability**            | ✅ Easy vertical scaling<br>✅ Read replicas for horizontal scaling<br>✅ Storage auto-scaling                          | ❌ Node resource constraints<br>❌ Complex replica setup<br>❌ Manual storage management           |
-| **Cost**                   | ✅ Pay-as-you-use pricing<br>✅ Reserved instance discounts<br>✅ No operational overhead                               | ❌ Need multiple nodes for HA<br>❌ Additional storage costs<br>❌ Higher operational costs        |
-| **Compliance**             | ✅ SOC, PCI DSS, HIPAA certified<br>✅ AWS compliance inheritance                                                      | ❌ Manual compliance implementation<br>❌ Additional audit requirements                           |
-| **Disaster Recovery**      | ✅ Automated cross-AZ replication<br>✅ Cross-region disaster recovery<br>✅ Automated failover                         | ❌ Manual DR setup<br>❌ Complex failover procedures<br>❌ Risk of data loss                       |
-| **Development Speed**      | ✅ Quick provisioning<br>✅ Ready-to-use service<br>✅ Focus on application logic                                       | ❌ Complex Kubernetes setup<br>❌ YAML configuration overhead<br>❌ Infrastructure management      |
-| **Flexibility**            | ⚠️ Limited customization<br>⚠️ AWS-specific features                                                                   | ✅ Full control over configuration<br>✅ Custom extensions possible                               |
-| **Vendor Lock-in**         | ❌ AWS-specific service<br>❌ Migration complexity                                                                     | ✅ Portable across platforms<br>✅ Standard PostgreSQL                                            |
-| **Learning Curve**         | ✅ Minimal database administration<br>✅ AWS console management                                                        | ❌ Kubernetes + PostgreSQL expertise<br>❌ Complex troubleshooting                                |
 
 ### ExternalName Service Pattern
-An **ExternalName** service in Kubernetes allows you to create a service that points to an external resource, such as an AWS RDS instance. This is useful for integrating external databases or services into your Kubernetes applications without needing to manage the lifecycle of those resources within Kubernetes. This uses
+An **ExternalName** service in Kubernetes allows you to create a service that points to an external resource, such as an AWS RDS instance. This is useful for integrating external databases or services into your Kubernetes applications without needing to manage the lifecycle of those resources within Kubernetes.
 **Benefits of ExternalName Service:**
-
 - **Service Discovery**: Applications connect via standard Kubernetes DNS
 - **Flexibility**: Easy to switch between different RDS endpoints
 - **Abstraction**: Decouples application from specific database endpoints
@@ -328,17 +324,18 @@ An **ExternalName** service in Kubernetes allows you to create a service that po
 
 ### Creating Kubernetes Secrets and configmaps with rds db details
 
-Secrets are used to store sensitive information like database credentials, while ConfigMaps are used to store non-sensitive configuration data. We will create a Kubernetes Secret for the RDS database credentials and a ConfigMap for the application configuration. Configmaps use `key-value` pairs to store non-sensitive data as environment variables, while secrets use `base64` encoding to store sensitive data.
+Secrets are used to store sensitive information like database credentials, SSH keys while ConfigMaps are used to store non-sensitive configuration data. We will create a Kubernetes Secret for the RDS database credentials and a ConfigMap for the application configuration. Configmaps use `key-value` pairs to store non-sensitive data as environment variables, while secrets use `base64` encoding to store sensitive data.
 
-Youll need base64 encoding for the username, password, secret key and database url (enter one by one):
+You'll need base64 encoding for the username, password and database url (enter one by one):
 
 ```bash
 echo -n '<your-rds-username>' | base64
 echo -n '<your-rds-password>' | base64
-echo -n '<your-secret-key>' | base64
-echo -n 'postgresql://postgresadmin:YourStrongPassword123!@postgres-db.3-tier-app-eks.svc.cluster.local:5432/postgres' | base64
+echo -n 'postgresql://<your-rds-username>:<your-rds-password>@postgres-db.3-tier-app-eks.svc.cluster.local:5432/postgres' | base64
 ```
-change the `postgresadmin` and `YourStrongPassword123!` with your actual RDS username and password.
+change the `<your-rds-username>` and `<your-rds-password>` with your actual RDS username and password.
+
+![](/images/img-17.png)
 
 Now using the secret manifest edit the values with your base64 encoded values and apply the secret manifest:
 ```yaml
@@ -357,7 +354,7 @@ data:
 
 Keep secret key the same as in the backend app it defaults to `dev-secret-key` but you can change it to whatever you want. its better to generate a random secret key for production use, but for now lets leave as is.
 
-The database url is `postgresql://postgresadmin:YourStrongPassword123!@postgres-db.3-tier-app-eks.svc.cluster.local:5432/postgres` it encapsulates the username, password, host, port and database name. This is how the application will connect to the RDS database.
+The database url is `postgresql://<your-rds-username>:<your-rds-password>@postgres-db.3-tier-app-eks.svc.cluster.local:5432/postgres` it encapsulates the username, password, host, port and database name. This is how the application will connect to the RDS database.
 
 
 Apply the secret manifest:
@@ -384,7 +381,8 @@ Apply the config manifest:
 kubectl apply -f configmap.yaml
 ```
 
-![](/images/img-8.png)
+![](/images/img-17.png)
+![](/images/img-18.png)
 
 ***Running database migrations***
 
@@ -392,7 +390,9 @@ In this project theres a database migration that needs to be run before deployin
 
 What a job does is it creates a pod that runs the specified command and then exits. If the command fails, the job will retry until it succeeds or reaches the specified backoff limit.
 
- This command `kubectl apply -f migration_job.yaml` will create a job that runs the command to apply the database migrations. This command will create the necessary tables and seed data in the RDS PostgreSQL database. Its worth analysing the job manifest to understand what it does and how it works. this is where the secrets and configmaps we created earlier will be used to connect to the database. its better than hardcoding the database credentials in the job manifest, because it allows you to change the credentials without modifying the job manifest.
+This command `kubectl apply -f migration_job.yaml` will create a job that runs the command to apply the database migrations. This command will create the necessary tables and seed data in the RDS PostgreSQL database. Its worth analysing the job manifest to understand what it does and how it works. this is where the secrets and configmaps we created earlier will be used to connect to the database. its better than hardcoding the database credentials in the job manifest, because it allows you to change the credentials without modifying the job manifest.
+
+(modify the file to use your image)
 
 ```bash
 #run these one by one
@@ -403,7 +403,7 @@ kubectl get pods -n 3-tier-app-eks
 kubectl logs <name-of-pod> -n 3-tier-app-eks
 ```
 
-![](/images/img-9.png)
+![](/images/img-19.png)
 
 ### Backend and Frontend services
 Now lets deploy the backend and frontend services. The backend service is a Flask application that connects to the RDS PostgreSQL database, and the frontend service is a React application that communicates with the backend service.
@@ -412,14 +412,14 @@ Read the manifest files for the backend and frontend services to understand what
 The frontend service will use the backend service's URL to communicate with it.
 ```bash
 #apply the backend service manifest
-kubectl apply -f backend-service.yaml
+kubectl apply -f backend.yaml
 #apply the frontend service manifest
-kubectl apply -f frontend-service.yaml
+kubectl apply -f frontend.yaml
 #check the status of the pods
 kubectl get deployment -n 3-tier-app-eks
 kubectl get svc -n 3-tier-app-eks
 ```
-![](/images/img-10.png)
+![](/images/img-20.png)
 
 ### Accessing the application
 At the minute we havent created ingress resources to expose the application to the internet. To access the application, we will port-forward the frontend service to our local machine. This will allow us to access the application using `localhost` and a specific port. Open two terminal windows, one for the backend service and one for the frontend service. In the first terminal window, run the following command to port-forward the backend service: We need to open new terminals because the port-forward command will block the terminal until you stop it with `CTRL+C`.
@@ -430,15 +430,14 @@ kubectl port-forward svc/backend 8000:8000 -n 3-tier-app-eks
 #port-forward the frontend service to localhost:8080
 kubectl port-forward svc/frontend 8080:80 -n 3-tier-app-eks
 ```
-![](/images/img-11.png)
+![](/images/img-21.png)
 
 you can access the backend service at `http://localhost:8000/api/topics` in the browser or `curl http://localhost:8000/api/topics` in the terminal.
 
-![](/images/img-12.png)
-
 you can access the frontend service at `http://localhost:8080` in the browser. The frontend service will communicate with the backend service to fetch data and display it.
 
-![](/images/img-13.png)
+![](/images/img-22.png)
+![](/images/img-23.png)
 
 this is a devops quiz application that you can use. the seed data created some samples, in the manage questions you can add more questions and answers. the `3-tier-app-eks/backend/questions-answers` includes some csv files that you can use to import questions and answers into the application. You can also add your own questions and answers using the frontend interface.
 
@@ -463,7 +462,7 @@ With IRSA + OIDC:
     AWS trusts that OIDC token because you’ve registered your cluster's OIDC provider with IAM.
 
 ```bash
-export cluster_name=Tawfiq-cluster
+export cluster_name=three-tier-react
 #this command will get the OIDC issuer ID for your EKS cluster
 oidc_id=$(aws eks describe-cluster --name $cluster_name \
 --query "cluster.identity.oidc.issuer" --output text | cut -d '/' -f 5)
@@ -475,17 +474,11 @@ aws iam list-open-id-connect-providers | grep $oidc_id | cut -d "/" -f4
 
 # If not, create an OIDC provider
 eksctl utils associate-iam-oidc-provider --cluster $cluster_name --approve
-
-# or use console
-# -> To create a provider, go to IAM, choose Add provider.
-# -> For Provider type, select OpenID Connect.
-# -> For Provider URL, enter the OIDC provider URL for your cluster.
-# -> For Audience, enter sts.amazonaws.com.
-# -> (Optional) Add any tags, for example a tag to identify which cluster is for this provider.
-# -> Choose Add provider.
 ```
 
 This creates the OIDC provider in IAM and associates it with your EKS cluster. This allows your cluster to issue tokens that AWS will trust for IAM role assumption.
+
+![](/images/img-24.png)
 
 ### Create IAM Policy for AWS Load Balancer Controller
 This command will create the IAM policy needed for the AWS Load Balancer Controller. The AWS Load Balancer Controller is allowed to create/modify/delete load balancers, target groups, security groups, etc.
@@ -516,7 +509,7 @@ eksctl create iamserviceaccount \
 kubectl get serviceaccount -n kube-system | grep -i aws-load-balancer-controller
 ```
 
-![](/images/img-14.png)
+![](/images/img-25.png)
 
 
 ***Example Use Case | AWS Load Balancer Controller***
@@ -535,7 +528,7 @@ Let’s say your EKS cluster needs to automatically create and manage Applicatio
 
 
 ### Installing the AWS Load Balancer Controller using Helm
-What are CRDs?
+What are CRDs? \
 Kubernetes comes with built-in resources like `Pod`, `Service`, `Deployment`. But it doesn't know about AWS-specific things like `TargetGroupBinding` or advanced `Ingress` features.
 
 CRDs teach Kubernetes about these new resource types. These aren't built into Kubernetes.\
@@ -595,7 +588,7 @@ aws-load-balancer-controller/
 └── README.md                     # Installation docs
 ```
 
-![](/images/img-15.png)
+![](/images/img-26.png)
 
 
 ### Creating an Ingress class for alb and an Ingress resource to access the frontend service
@@ -613,14 +606,14 @@ aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" "Name=map-public
 
 # Get the list of subnets id's from above commands and run this
 # Update the correct subnet id's
-aws ec2 create-tags --resources subnet-765gf45367hjd4563 subnet-765gfd45631643 \
-subnet-765gf45367hjd4563 --tags Key=kubernetes.io/role/elb,Value=1
+aws ec2 create-tags --resources subnet-085ba3c4a15325db0 subnet-03b3b39ebfc0ac176 \
+subnet-028baa71861e4b8aa --tags Key=kubernetes.io/role/elb,Value=1
 
 # Verify the tags
-aws ec2 describe-subnets --subnet-ids subnet-765gf45367hjd4563 subnet-765gfd45631643 \
-subnet-765gf45367hjd4563 --query "Subnets[*].{SubnetId:SubnetId,Tags:Tags}"
+aws ec2 describe-subnets --subnet-ids subnet-085ba3c4a15325db0 subnet-03b3b39ebfc0ac176 \
+subnet-028baa71861e4b8aa --query "Subnets[*].{SubnetId:SubnetId,Tags:Tags}"
 ```
-![](/images/img-16.png)
+![](/images/img-27.png)
 
 Now apply the ingress manifest using `kubectl apply -f ingress.yaml`. To create the ingress class and ingress resource. The ingress class is used to specify which ingress controller to use for the ingress resource. In this case, we are using the AWS Load Balancer Controller as the ingress controller.
 
@@ -673,12 +666,12 @@ kubectl logs -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controll
 ```
 
 
-![](/images/img-17.png)
+![](/images/img-28.png)
 
 
 It may take a few minutes for the ALB to be provisioned and the DNS name to be available. Once it is available, you can access the application using the DNS name of the ALB in aws by searching loadbalancer, click the loadbalancer created and copy the DNS and paste it in the browser.
 
-![](/images/img-18.png)
+![](/images/img-29.png)
 
 
 

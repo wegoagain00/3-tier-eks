@@ -7,6 +7,6 @@ metadata:
     service: database
 spec:
   type: ExternalName
-  externalName: tawfiq-db.cto44ogqocij.eu-west-2.rds.amazonaws.com
+  externalName: three-tier-react-db.cto44ogqocij.eu-west-2.rds.amazonaws.com
   ports:
-  - port: 5432 
+    - port: 5432
