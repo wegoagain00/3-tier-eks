@@ -1,10 +1,12 @@
-# 🚀 DevOps Project: Deploying a three tier app on AWS EKS
+# 🚀 DevOps Project: Deploying a three tier app on AWS EKS (EKS, EC2, RDS, Github Actions, ECR, ALB, Route53, OIDC, IAM)
+
+## 🏗 Architecture
+![arch](/images/three-tier-eks.jpeg)
 
 ## 🧠 About the Project
-In this project, we will deploy a three-tier application on AWS EKS (Elastic Kubernetes Service) using Kubernetes. The application consists of a React frontend, Flask backend and a RDS PostgreSQL database. We will use Docker to containerize the application, and Kubernetes to orchestrate the deployment on EKS.
+In this project, we will deploy a three-tier application on AWS EKS (Elastic Kubernetes Service). The application consists of a React frontend, Flask backend and a RDS PostgreSQL database. We will use Docker to containerize the application, Github Actions and ECR to implement CI and Kubernetes to orchestrate the deployment on EKS.
 
-To make the application publicly accessible, I'll implement a AWS load balancer controller which will provision an ALB (Application Load Balancer) through Kubernetes ingress resources. In addition Kubernetes secrets will be used to store sensitive information such as database credentials and ConfigMap will be used to store non-sensitive configuration data.
-
+To make the application publicly accessible, I'll implement an AWS load balancer controller which will provision an ALB (Application Load Balancer) through Kubernetes ingress resources. In addition Kubernetes secrets will be used to store sensitive information such as database credentials and ConfigMap will be used to store non-sensitive configuration data.
 
 Before deploying the backend service, I'll run database migrations using a Kubernetes Job, ensuring the schema is properly initialized. To simplify database connectivity, I'll utilize an External Service for the RDS instance, leveraging Kubernetes' DNS-based service discovery to maintain clean application configuration.
 
@@ -19,37 +21,12 @@ In EKS, youre provided with 3 options on how to run your workloads:
 - ***Self-Managed Node Groups***: You can create and manage your own EC2 instances to run your Kubernetes workloads. This option gives you more control over the underlying infrastructure but requires more management overhead.
 - ***Fargate Nodes***: EKS Fargate allows you to run your Kubernetes workloads without managing the underlying EC2 instances. Fargate automatically provisions and scales the compute resources needed to run your containers, making it a serverless option for running workloads on EKS. Note: You cant use persistent volumes with Fargate, so if you need to store data that persists beyond the lifecycle of a pod, you should use managed node groups or self-managed node groups.
 
-We will keep it simple and use ***Managed Node Groups*** with eksctl for this project, as it provides a good balance between ease of use and control over the underlying infrastructure.
-
-
-## 🏗 Architecture
-![arch](/images/three-tier-eks.jpeg)
+We will keep it simple and use ***Managed Node Groups*** with `eksctl` for this project, as it provides a good balance between ease of use and control over the underlying infrastructure.
 
 ## Prerequisites
 I'll assume you have basic knowledge of Docker, Kubernetes, and AWS services. you will need to install ***eksctl, aws cli, kubectl, helm and docker*** on your local machine.
 
 You will also need an AWS account with the necessary permissions to create EKS clusters, EC2 instances, and other resources.
-
-## 🛠 Tech Stack
-
-
-| **Layer**            | **Technology / Tool**                        | **Purpose / Role**                                                       |
-| -------------------- | -------------------------------------------- | ------------------------------------------------------------------------ |
-| **Frontend**         | React (Dockerized)                           | UI Layer served via Kubernetes deployment                                |
-|                      | NGINX (in container)                         | Serves static React files and proxies API requests                       |
-| **Backend**          | Flask (Python)                               | REST API for handling business logic                                     |
-|                      | Gunicorn                                     | WSGI server to run Flask in production                                   |
-|                      | PostgreSQL (via RDS or container)            | Relational database backend                                              |
-| **Containerization** | Docker                                       | Used for building and packaging frontend and backend apps                |
-| **Kubernetes (EKS)** | Amazon EKS                                   | Managed Kubernetes cluster                                               |
-|                      | `kubectl` & `eksctl`                         | Cluster and resource management                                          |
-| **Networking**       | AWS ALB Ingress Controller                   | Routes external traffic into the cluster                                 |
-|                      | Ingress + IngressClass                       | Defines routing rules for services like `/api` → backend, `/` → frontend |
-|                      | ClusterIP Services                           | Internal service discovery and communication                             |
-| **Security & IAM**   | IAM Roles for Service Accounts (IRSA) + OIDC | Securely grants pods AWS permissions (e.g., for ALB controller)          |
-| **Secrets Mgmt**     | Kubernetes Secrets                           | Stores DB credentials, Flask secret key, etc.                            |
-| **Configuration**    | Kubernetes ConfigMaps                        | Stores non-sensitive app config                                          |
-| **Package Manager**  | Helm                                         | Installs AWS ALB Controller charts                                       |
 
 
 ## 🚀 Getting Started
@@ -60,9 +37,9 @@ Lets start by setting up the EKS cluster and deploying the application. To creat
 
 ```bash
 # Eksctl command to build an EKS cluster with a managed node group
-# with 2 node(min:1, max: 3 nodes as autoscaling)
+# with 2 nodes(min:1, max: 3 nodes as autoscaling)
 eksctl create cluster \
-  --name Tawfiq-cluster \
+  --name three-tier-react \
   --region eu-west-2 \
   --version 1.31 \
   --nodegroup-name standard-workers \
@@ -72,17 +49,17 @@ eksctl create cluster \
   --nodes-max 3 \
   --managed
 ```
+![EKS Cluster Nodes](/images/img-1.png)
 
+A cloud formation stack is what runs in the backend to configure these resources.\
 This `eksctl` command creates an Amazon EKS (Elastic Kubernetes Service) cluster in AWS with the following specifications:
 
 **Cluster Details:**
-
-- **Name**: `Tawfiq-cluster`
+- **Name**: `three-tier-react`
 - **Region**: `eu-west-2` (Europe - London)
 - **Kubernetes Version**: `1.31`
 
 **Node Group Configuration:**
-
 - **Node Group Name**: `standard-workers`
 - **Instance Type**: `t3.medium` (2 vCPUs, 4GB RAM)
 - **Initial Node Count**: 2 nodes
@@ -91,33 +68,37 @@ This `eksctl` command creates an Amazon EKS (Elastic Kubernetes Service) cluster
 - **Managed**: Uses AWS-managed node groups (AWS handles node provisioning, updates, and lifecycle management)
 
 **What Gets Created:**
+- An EKS control plane (master nodes managed by AWS)
+- A VPC with public and private subnets across multiple availability zones
+- An Internet Gateway and NAT Gateways for networking
+- Security groups with appropriate rules
+- IAM roles and policies for the cluster and nodes
+- A managed node group with 2 t3.medium EC2 instances
+- Auto Scaling Group configured to scale between 1-3 nodes
+- Integration with AWS Load Balancer Controller and other AWS services
 
-1. An EKS control plane (master nodes managed by AWS)
-1. A VPC with public and private subnets across multiple availability zones
-1. An Internet Gateway and NAT Gateways for networking
-1. Security groups with appropriate rules
-1. IAM roles and policies for the cluster and nodes
-1. A managed node group with 2 t3.medium EC2 instances
-1. Auto Scaling Group configured to scale between 1-3 nodes
-1. Integration with AWS Load Balancer Controller and other AWS services
+The `--managed` flag means AWS will automatically handle node updates, security patches, and replacement of unhealthy nodes. This is typically the recommended approach for production workloads as it reduces operational overhead.
 
-The `--managed` flag means AWS will automatically handle node updates, security patches, and replacement of unhealthy nodes. This is typically the recommended approach for production workloads as it reduces operational overhead.​​​​​​​​​​​​​​​​
-
-It can take a few minutes to create the cluster, so be patient. Once the cluster is created, you can verify it by running:
+It can take 10-20 minutes to create the cluster, so be patient. Once the cluster is created, you can verify it by running:
 
 ```bash
 # Check the status of the EKS cluster
 aws eks list-clusters --region eu-west-2
 ```
-Now to access the cluster, we need to update our kubeconfig file. This allows `kubectl` to communicate with the EKS cluster.
-
+Now to access the cluster, we need to check if we are connected to the kubeconfig file. This allows `kubectl` to communicate with the EKS cluster.
 ```bash
-# Update kubeconfig to use the new EKS cluster
-aws eks update-kubeconfig --name Tawfiq-cluster --region eu-west-2
 # Get the current context
 kubectl config current-context
 ```
-![EKS Cluster Nodes](/images/img-1.png)
+If not run:
+
+```bash
+# Update kubeconfig to use the new EKS cluster
+aws eks update-kubeconfig --name <cluster-name> --region eu-west-2
+# Get the current context
+kubectl config current-context
+```
+![EKS Cluster Nodes](/images/img-2.png)
 
 Now run these commands to ensure you can see the nodes in your cluster:
 
@@ -129,21 +110,21 @@ kubectl get pod -A #list all pods in all namespaces
 kubectl get services -A #list all services in all namespaces
 ```
 
-![EKS Cluster Nodes](/images/img-2.png)
+![EKS Cluster Nodes](/images/img-3.png)
 
-Hopefully should all be up and running. 
+Hopefully should all be up and running.
 
-For this project we are using a Flask backend, connects to a PostgreSQL database, and a React frontend. 
+For this project we are using a React frontend, a Flask backend that connects to a PostgreSQL database.
 
 ### Creating RDS PostgreSQL Database
-The RDS instance will be in the same VPC as the EKS cluster, allowing the application to connect to it securely. EKS created private subnets for the cluster, so we will use those subnets to deploy the RDS instance.
+The PostgreSQL RDS instance will be in the same VPC as the EKS cluster, allowing the application to connect to it securely. EKS created private subnets for the cluster, so we will use those subnets to deploy the RDS instance.
 
 You can directly check for VPC ID and Private Subnet IDs in the AWS console or use the following command: (this will be used later to create a subnet group for the RDS instance)
 
 ```bash
 # Get the VPC ID and Private Subnet IDs for the EKS cluster (stores VPC ID in VPC_ID variable)
 VPC_ID=$(aws eks describe-cluster \
-  --name Tawfiq-cluster \
+  --name three-tier-react \
   --region eu-west-2 \
   --query "cluster.resourcesVpcConfig.vpcId" \
   --output text)
@@ -156,62 +137,63 @@ aws ec2 describe-subnets \
 
 # create a subnet group for the RDS instance (replace the subnet IDs with your own)
 aws rds create-db-subnet-group \
-  --db-subnet-group-name tawfiq-db-subnet-group \
-  --db-subnet-group-description "Subnet group for Tawfiq RDS instance" \
-  --subnet-ids subnet-08da29375067815ff subnet-000a1d120e4d66e12 subnet-0f5bc7920d6d54075 \
+  --db-subnet-group-name three-tier-react-db-subnet-group \
+  --db-subnet-group-description "Subnet group for three-tier-react RDS instance" \
+  --subnet-ids <your-subnet-id> <your-subnet-id> <your-subnet-id> \
   --region eu-west-2
 ```
-![](/images/img-3.png)
+![](/images/img-4.png)
 
 Lets create a security group for the RDS instance. This security group will allow inbound traffic from the EKS cluster's worker nodes on the PostgreSQL port (5432).
 
 ```bash
 # Create a security group for the RDS instance
 aws ec2 create-security-group \
-  --group-name rds-security-group \
-  --description "Security group for RDS instance" \
+  --group-name three-tier-react-rds-security-group \
+  --description "Security group for RDS instance three-tier-react" \
   --vpc-id $VPC_ID \
   --region eu-west-2
 ```
+![](/images/img-5.png)
 
 Now the security group is created, we need to allow inbound traffic from the EKS cluster's worker nodes on the PostgreSQL port (5432).
 ```bash
 # Get the security group ID of rds-security-group
 RDS_SG_ID=$(aws ec2 describe-security-groups \
-  --filters "Name=group-name,Values=rds-security-group" "Name=vpc-id,Values=$VPC_ID" \
+  --filters "Name=group-name,Values=three-tier-react-rds-security-group" "Name=vpc-id,Values=$VPC_ID" \
   --query "SecurityGroups[0].GroupId" \
   --output text \
   --region eu-west-2)
 # Get the security group ID of the EKS cluster's worker nodes
-EKS_SG_ID=$(aws ec2 describe-instances \
-  --filters "Name=tag:eks:cluster-name,Values=Tawfiq-cluster" \
-  --query "Reservations[].Instances[].SecurityGroups[].GroupId" \
-  --output text \
-  --region eu-west-2)
+EKS_SG_ID=$(aws eks describe-cluster \
+  --name three-tier-react \
+  --region eu-west-2 \
+  --query "cluster.resourcesVpcConfig.securityGroupIds[0]" \
+  --output text)
 # Allow inbound traffic from the EKS cluster's worker nodes on the PostgreSQL port (5432)
 aws ec2 authorize-security-group-ingress \
   --group-id $RDS_SG_ID \
   --protocol tcp \
   --port 5432 \
   --source-group $EKS_SG_ID \
-  --region eu-west-2   
+  --region eu-west-2
 ```
 
-![](/images/img-4.png)
+![](/images/img-6.png)
 
-Now to create the RDS instance, we will use the `aws rds create-db-instance` command. This command will create a PostgreSQL database instance in the VPC and private subnets we created earlier.
+Now to create the RDS instance, we will use the `aws rds create-db-instance` command. This command will create a PostgreSQL database instance in the VPC and private subnets we created earlier. (change the password to your own, also the subnet group name)
 
 ```bash
 aws rds create-db-instance \
-  --db-instance-identifier tawfiq-db \
+  --db-instance-identifier three-tier-react-db \
   --db-instance-class db.t3.micro \
   --engine postgres \
   --engine-version 15 \
-  --master-username admin \
+  --master-username postgresadmin \
   --master-user-password <makethisyourpassword> \
   --allocated-storage 20 \
   --vpc-security-group-ids $RDS_SG_ID \
-  --db-subnet-group-name tawfiq-db-subnet-group \
+  --db-subnet-group-name three-tier-react-db-subnet-group \
   --no-publicly-accessible \
   --backup-retention-period 7 \
   --multi-az \
@@ -219,22 +201,55 @@ aws rds create-db-instance \
   --region eu-west-2
 ```
 Change both `--master-username` from admin and the `--master-user-password` to a secure password of your choice. \
-For security: Storing secrets like the DB password in AWS Secrets Manager or a Kubernetes Secret instead of hardcoding them would be recommended. 
+For security: Storing secrets like the DB password in AWS Secrets Manager or a Kubernetes Secret instead of hardcoding them would be recommended.
 
-![](/images/img-5.png)
+![](/images/img-7.png)
 
-It may take a while but you will see it getting created
-![](/images/img-6.png)
+It may take a while but you will see it getting created, go to AWS RDS Console and check the status of the DB instance.
+![](/images/img-8.png)
 
-***Now its time to create our three-tier application. This has all been created, we will be using the pre-built images already hosted on docker hub. This project is courtesy of Akhilesh.***
+---
+
+***Now its time to create our three-tier application. As you can see the frontend and backend are in this repository. I will be implementing CI using GitHub Actions and ECR so the image can be hosted on AWS***
 
 You can clone this repository to get the code for the application:
 ```bash
 git clone https://github.com/wegoagain00/3-tier-eks.git
-cd three-tier-app-eks/k8s
 ```
-These are all the manifest files for the application. 
-I recommend going through each file to understand what it does and how it works, using `vim <filename>` or `nano <filename>` to open the files in your terminal.
+
+Before we begin lets set up OIDC for the connection between our AWS and GitHub Actions. This allows our GitHub Actions workflow to authenticate with AWS using short-lived tokens, completely removing the need to store any AWS keys in GitHub secrets.
+
+1. Go to IAM -> Identity providers and add a new provider.
+2. Choose OpenID Connect as option.
+3. For the "Provider URL", use `https://token.actions.githubusercontent.com`.
+4. For the "Audience", use `sts.amazonaws.com`.
+5. Go to the Identity provider and select 'Assign Role', then 'Create an IAM Role', select 'web identity', on audience use `sts.amazonaws.com`. On Github organisation enter your github username, also on Github repository enter the name of the repository, also git branch on `main` then press next.
+6. On permissions attach the `AmazonEC2ContainerRegistryPowerUser`, to allow it to push images to ECR. Press next.
+7. Give the role a name like "GitHubActionsECR". and then create the role
+
+![](/images/img-9.png)
+![](/images/img-10.png)
+![](/images/img-11.png)
+
+Now we have the permissions we will need to create the ECR repository for these images to be pushed to.
+1. Go to ECR on AWS console and create a new repository for each image we will be pushing to ECR.
+
+![](/images/img-12.png)
+
+2. Do the same for the backend image.
+![](/images/img-13.png)
+
+Now this repository will have it but we will create this following folder `.github/workflows/ci.yml`. This will contain the CI pipeline for the application. It will push our images to the ECR.
+
+Use the following ci.yml file and replace the following with your own:
+`AWS_REGION`: The AWS region where your ECR repositories are located (e.g., us-west-2).
+`ECR_REPOSITORY_FRONTEND`: The name of the ECR repository you created for your frontend image.
+`ECR_REPOSITORY_BACKEND`: The name of the ECR repository for your backend image.
+`IAM_ROLE_ARN`: The full ARN of the IAM role you just created. It will look like
+arn:aws:iam::123456789012:role/YourRoleName.
+
+
+
 
 ### Namespace
 ***The first thing we will be doing is creating the Kubernetes namespace, we need this to isolate group of resources. It gives you a virtual cluster for you to work within, usually needed when working in teams.***
@@ -272,7 +287,7 @@ kubectl run -i --tty pg-client --image=postgres --namespace=3-tier-app-eks -- ba
 #the name wegoagain is the username we set when creating the RDS instance change it to your username
 psql -h postgres-db -p 5432 -U wegoagain -d postgres
 ```
-Itll ask for the password, enter the password you set when creating the RDS instance. If you see a prompt like `postgres=#`, then you have successfully connected to the RDS instance. Dont forget to exit the pod when done by typing `exit` and then `exit` again. 
+Itll ask for the password, enter the password you set when creating the RDS instance. If you see a prompt like `postgres=#`, then you have successfully connected to the RDS instance. Dont forget to exit the pod when done by typing `exit` and then `exit` again.
 
 To delete the temporary pod, run:
 
@@ -301,7 +316,7 @@ kubectl delete pod pg-client --namespace=3-tier-app-eks
 | **Learning Curve**         | ✅ Minimal database administration<br>✅ AWS console management                                                        | ❌ Kubernetes + PostgreSQL expertise<br>❌ Complex troubleshooting                                |
 
 ### ExternalName Service Pattern
-An **ExternalName** service in Kubernetes allows you to create a service that points to an external resource, such as an AWS RDS instance. This is useful for integrating external databases or services into your Kubernetes applications without needing to manage the lifecycle of those resources within Kubernetes. This uses 
+An **ExternalName** service in Kubernetes allows you to create a service that points to an external resource, such as an AWS RDS instance. This is useful for integrating external databases or services into your Kubernetes applications without needing to manage the lifecycle of those resources within Kubernetes. This uses
 **Benefits of ExternalName Service:**
 
 - **Service Discovery**: Applications connect via standard Kubernetes DNS
@@ -340,7 +355,7 @@ data:
   DATABASE_URL: <your-base64-encoded-database-url>
 ```
 
-Keep secret key the same as in the backend app it defaults to `dev-secret-key` but you can change it to whatever you want. its better to generate a random secret key for production use, but for now lets leave as is. 
+Keep secret key the same as in the backend app it defaults to `dev-secret-key` but you can change it to whatever you want. its better to generate a random secret key for production use, but for now lets leave as is.
 
 The database url is `postgresql://postgresadmin:YourStrongPassword123!@postgres-db.3-tier-app-eks.svc.cluster.local:5432/postgres` it encapsulates the username, password, host, port and database name. This is how the application will connect to the RDS database.
 
@@ -393,7 +408,7 @@ kubectl logs <name-of-pod> -n 3-tier-app-eks
 ### Backend and Frontend services
 Now lets deploy the backend and frontend services. The backend service is a Flask application that connects to the RDS PostgreSQL database, and the frontend service is a React application that communicates with the backend service.
 
-Read the manifest files for the backend and frontend services to understand what they do and how they work. The backend service will use the secrets and configmaps we created earlier to connect to the database and configure the application. 
+Read the manifest files for the backend and frontend services to understand what they do and how they work. The backend service will use the secrets and configmaps we created earlier to connect to the database and configure the application.
 The frontend service will use the backend service's URL to communicate with it.
 ```bash
 #apply the backend service manifest
@@ -429,7 +444,7 @@ this is a devops quiz application that you can use. the seed data created some s
 
 ### Time to implement Ingress
 
-An ingress is a Kubernetes resource that manages external access to services in a cluster, typically via HTTP/HTTPS. It provides load balancing, SSL termination and name-based virtual hosting. 
+An ingress is a Kubernetes resource that manages external access to services in a cluster, typically via HTTP/HTTPS. It provides load balancing, SSL termination and name-based virtual hosting.
 
 The aws load balancer controller is a Kubernetes controller that manages AWS Elastic Load Balancers (ELBs) for Kubernetes services. It automatically provisions and configures ELBs based on the ingress resources defined in the cluster. This allows you to expose your services to the internet using a load balancer, without having to manually create and configure the ELB in AWS.
 
@@ -455,7 +470,7 @@ oidc_id=$(aws eks describe-cluster --name $cluster_name \
 
 echo $oidc_id
 
-# Check if IAM OIDC provider with your cluster's issuer ID 
+# Check if IAM OIDC provider with your cluster's issuer ID
 aws iam list-open-id-connect-providers | grep $oidc_id | cut -d "/" -f4
 
 # If not, create an OIDC provider
@@ -553,7 +568,7 @@ helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
   --set region=eu-west-2
   ```
 
-Helm takes your `--set` parameters and automatically generates all the YAML files with your custom values filled in. 
+Helm takes your `--set` parameters and automatically generates all the YAML files with your custom values filled in.
 Helm uses templates with placeholders that get filled with your values
 
 Helm is the package manager for Kubernetes. Think of it like:
@@ -562,7 +577,7 @@ But instead of installing OS packages or libraries, Helm installs Kubernetes app
 
 Why Use Helm Here?
 
-Doing this manually would be dozens of kubectl apply -f commands with templated YAML. Helm bundles all that up into a reusable chart. 
+Doing this manually would be dozens of kubectl apply -f commands with templated YAML. Helm bundles all that up into a reusable chart.
 
 The `eks/aws-load-balancer-controller` chart contains:
 ```plaintext
@@ -661,7 +676,7 @@ kubectl logs -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controll
 ![](/images/img-17.png)
 
 
-It may take a few minutes for the ALB to be provisioned and the DNS name to be available. Once it is available, you can access the application using the DNS name of the ALB in aws by searching loadbalancer, click the loadbalancer created and copy the DNS and paste it in the browser. 
+It may take a few minutes for the ALB to be provisioned and the DNS name to be available. Once it is available, you can access the application using the DNS name of the ALB in aws by searching loadbalancer, click the loadbalancer created and copy the DNS and paste it in the browser.
 
 ![](/images/img-18.png)
 
@@ -694,7 +709,6 @@ To delete the EKS cluster and all resources created, you can use the following c
 ```bash
 eksctl delete cluster Tawfiq-cluster --region eu-west-2
 ```
-This will delete the EKS cluster, the VPC, the RDS instance, and all other resources created during the setup. Make sure to back up any data you want to keep before running this command, as it will permanently delete all resources associated with the cluster. 
+This will delete the EKS cluster, the VPC, the RDS instance, and all other resources created during the setup. Make sure to back up any data you want to keep before running this command, as it will permanently delete all resources associated with the cluster.
 
 Double check the AWS console to ensure all resources are deleted, as sometimes some resources may not be deleted automatically due to dependencies or other issues.
-
