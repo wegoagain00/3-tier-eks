@@ -33,7 +33,7 @@ spec:
             ]
       containers:
         - name: backend
-          image: 373317459404.dkr.ecr.eu-west-2.amazonaws.com/3-tier-eks-backend:0d0dce4ba4675b664fa78a59c04f8afa32f6e039
+          image: 373317459404.dkr.ecr.eu-west-2.amazonaws.com/3-tier-eks-backend:e070a1516c2711367d3da6332b1a509313deb944
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
