@@ -9,7 +9,7 @@ spec:
     spec:
       containers:
         - name: migration
-          image: 373317459404.dkr.ecr.eu-west-2.amazonaws.com/3-tier-eks-backend:e9f11a4c9ac99fe003972328a0794809074bc3d1
+          image: 373317459404.dkr.ecr.eu-west-2.amazonaws.com/3-tier-eks-backend:0d0dce4ba4675b664fa78a59c04f8afa32f6e039
           imagePullPolicy: Always
 
           command: ["/bin/bash", "-c", "./migrate.sh"]

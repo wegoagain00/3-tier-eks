@@ -22,9 +22,18 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/arch: amd64
+      initContainers:
+        - name: wait-for-db
+          image: busybox
+          command:
+            [
+              "sh",
+              "-c",
+              "until nslookup postgres-db.3-tier-app-eks.svc.cluster.local; do echo waiting for database; sleep 2; done;",
+            ]
       containers:
         - name: backend
-          image: 373317459404.dkr.ecr.eu-west-2.amazonaws.com/3-tier-eks-backend:e9f11a4c9ac99fe003972328a0794809074bc3d1 # NOTE: This tag may be incorrect
+          image: 373317459404.dkr.ecr.eu-west-2.amazonaws.com/3-tier-eks-backend:0d0dce4ba4675b664fa78a59c04f8afa32f6e039
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -59,8 +68,6 @@ kind: Service
 metadata:
   name: backend
   namespace: 3-tier-app-eks
-  annotations:
-    alb.ingress.kubernetes.io/healthcheck-path: /api
 spec:
   selector:
     app: backend
