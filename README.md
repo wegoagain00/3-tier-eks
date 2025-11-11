@@ -700,18 +700,18 @@ To delete the RDS instance, you can use the following command:
 ```bash
 #can take a while to delete
 aws rds delete-db-instance \
---db-instance-identifier tawfiq-db \
+--db-instance-identifier three-tier-react-db \
 --skip-final-snapshot \
 --region eu-west-2
 
 aws rds delete-db-subnet-group \
-  --db-subnet-group-name tawfiq-db-subnet-group \
+  --db-subnet-group-name three-tier-react-db-subnet-group \
   --region eu-west-2
 ```
 
 To delete the EKS cluster and all resources created, you can use the following command:
 ```bash
-eksctl delete cluster Tawfiq-cluster --region eu-west-2
+eksctl delete cluster three-tier-react --region eu-west-2
 ```
 This will delete the EKS cluster, the VPC, the RDS instance, and all other resources created during the setup. Make sure to back up any data you want to keep before running this command, as it will permanently delete all resources associated with the cluster.
 
