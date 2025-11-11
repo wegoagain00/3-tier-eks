@@ -676,12 +676,13 @@ It may take a few minutes for the ALB to be provisioned and the DNS name to be a
 
 
 ### Whats Next and how can we improve?
-In this project, we have successfully deployed a three-tier application on AWS EKS using Kubernetes. We have used Docker to containerize the application, Kubernetes to orchestrate the deployment, and AWS services like RDS for the database and ALB for load balancing.
+In this project, we have successfully deployed a three-tier application on AWS EKS using Kubernetes. We have used Docker to containerise the application implementing , and Github Actions and ECR to push the images to the ECR repository for Continuous Integration, Kubernetes to orchestrate the deployment, and AWS services like RDS for the database and ALB for load balancing.
+
 The next future steps will be to implement monitoring and logging for the application using tools like Prometheus, Grafana. This will help us monitor the application's performance and troubleshoot any issues that may arise.
 
-Another future step will be to implement CI/CD for the application using GitHub Actions. This will allow us to automate the deployment process and ensure that the application is always up-to-date with the latest changes.
+Another future step will be to implement CI/'CD' for the application. This will allow us to automate the deployment process and ensure that the application is always up-to-date with the latest changes.
 
-We can also use route53 to create a custom domain for the application and point it to the ALB. This will allow us to access the application using a custom domain name instead of the ALB DNS name.
+We will also use route53 to create a custom domain for the application and point it to the ALB. This will allow us to access the application using a custom domain name instead of the ALB DNS name.
 
 
 ### To delete the cluster and all resources created
